@@ -84,54 +84,26 @@
 
             FLAKE_PATH="/etc/nixos"
             HOSTNAME=$(hostname)
-            LOG_FILE="$FLAKE_PATH/.nixos-avf-rebuild.log"
-            DEBUG_FLAG="$FLAKE_PATH/.nixos-avf-debug"
 
-            log() {
-              local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
-              echo "$msg"
-              echo "$msg" >> "$LOG_FILE"
-            }
-
-            debug() {
-              if [ -f "$DEBUG_FLAG" ]; then
-                log "[DEBUG] $1"
-              fi
-            }
-
-            echo "=== nixos-avf-rebuild started at $(date) ===" > "$LOG_FILE"
-            log "HOSTNAME: $HOSTNAME"
-            [ -f "$DEBUG_FLAG" ] && log "Debug mode enabled"
-
-            debug "Waiting for flake.nix..."
             for i in $(seq 1 30); do
               [ -f "$FLAKE_PATH/flake.nix" ] && break
-              debug "Attempt $i: flake.nix not found, sleeping..."
               sleep 1
             done
 
             if [ ! -f "$FLAKE_PATH/flake.nix" ]; then
-              log "No flake.nix found at $FLAKE_PATH, skipping auto-rebuild"
+              echo "No flake.nix found at $FLAKE_PATH, skipping"
               exit 0
             fi
-            debug "Found flake.nix"
 
-            log "Checking nix configuration..."
-            if ! nix eval "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" >> "$LOG_FILE" 2>&1; then
-              log "nix eval failed, see $LOG_FILE for details"
-              echo "=== nix eval error ===" >> "$LOG_FILE"
-              nix eval "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" 2>&1 >> "$LOG_FILE" || true
+            echo "Checking configuration..."
+            if ! nix eval "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" 2>&1; then
+              echo "nix eval failed (error above), skipping"
               exit 0
             fi
-            debug "nix eval succeeded"
 
-            log "Rebuilding NixOS from $FLAKE_PATH#$HOSTNAME..."
-            if nixos-rebuild switch --flake "$FLAKE_PATH#$HOSTNAME" >> "$LOG_FILE" 2>&1; then
-              log "Rebuild complete!"
-            else
-              log "Rebuild failed, see $LOG_FILE for details"
-              exit 1
-            fi
+            echo "Rebuilding..."
+            nixos-rebuild switch --flake "$FLAKE_PATH#$HOSTNAME"
+            echo "Done!"
           '';
         };
 

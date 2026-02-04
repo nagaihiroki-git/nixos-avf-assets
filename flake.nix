@@ -33,7 +33,8 @@
                   root = {
                     size = "100%";
                     content = {
-                      type = "ext4";
+                      type = "filesystem";
+                      format = "ext4";
                       mountpoint = "/";
                     };
                   };

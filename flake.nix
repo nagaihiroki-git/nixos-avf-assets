@@ -73,17 +73,28 @@
         systemd.services.nixos-avf-rebuild = {
           description = "Auto rebuild NixOS from VirtioFS flake";
           wantedBy = [ "multi-user.target" ];
-          after = [ "local-fs.target" ];
+          wants = [ "network-online.target" ];
+          after = [ "local-fs.target" "network-online.target" ];
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
           };
-          path = [ pkgs.nix pkgs.nixos-rebuild pkgs.git pkgs.coreutils pkgs.gnugrep pkgs.inetutils ];
+          path = [ pkgs.nix pkgs.nixos-rebuild pkgs.git pkgs.coreutils pkgs.gnugrep pkgs.inetutils pkgs.iputils ];
           script = ''
             set -euo pipefail
 
             FLAKE_PATH="/etc/nixos"
             HOSTNAME=$(hostname)
+
+            # Wait for network
+            for i in $(seq 1 60); do
+              if ping -c 1 github.com > /dev/null 2>&1; then
+                echo "Network is up"
+                break
+              fi
+              echo "Waiting for network... ($i/60)"
+              sleep 2
+            done
 
             for i in $(seq 1 30); do
               [ -f "$FLAKE_PATH/flake.nix" ] && break

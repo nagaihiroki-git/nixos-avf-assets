@@ -40,28 +40,40 @@
         ];
 
         systemd.services.nixos-avf-rebuild = {
-          description = "Auto rebuild NixOS from VirtioFS flake";
+          description = "Auto rebuild NixOS from VirtioFS flake (First Boot Only)";
           wantedBy = [ "multi-user.target" ];
           wants = [ "network-online.target" ];
-          after = [ "local-fs.target" "network-online.target" ];
+          after = [ "network-online.target" ];
+          unitConfig.ConditionPathExists = "!/var/lib/nixos-avf-setup-done";
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
+            StandardOutput = "journal+console";
+            StandardError = "journal+console";
           };
-          path = [ pkgs.nix pkgs.nixos-rebuild pkgs.git pkgs.coreutils pkgs.gnugrep pkgs.inetutils pkgs.iputils ];
+          path = with pkgs; [ nix nixos-rebuild git coreutils gnugrep inetutils iputils gzip ];
           script = ''
             set -euo pipefail
+
+            GREEN='\033[0;32m'
+            YELLOW='\033[1;33m'
+            RED='\033[0;31m'
+            NC='\033[0m'
+
+            log() { echo -e "''${YELLOW}[AutoSetup] $1''${NC}"; }
+            success() { echo -e "''${GREEN}[AutoSetup] $1''${NC}"; }
+            error() { echo -e "''${RED}[AutoSetup] ERROR: $1''${NC}"; }
 
             FLAKE_PATH="/etc/nixos"
             HOSTNAME=$(hostname)
 
+            log "Waiting for network..."
             for i in $(seq 1 60); do
               if ping -c 1 github.com > /dev/null 2>&1; then
-                echo "Network is up"
+                success "Network is UP!"
                 break
               fi
-              echo "Waiting for network... ($i/60)"
-              sleep 2
+              sleep 1
             done
 
             for i in $(seq 1 30); do
@@ -70,19 +82,20 @@
             done
 
             if [ ! -f "$FLAKE_PATH/flake.nix" ]; then
-              echo "No flake.nix found at $FLAKE_PATH, skipping"
+              log "No flake.nix found at $FLAKE_PATH, skipping."
               exit 0
             fi
 
-            echo "Checking configuration..."
-            if ! nix eval "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" 2>&1; then
-              echo "nix eval failed (error above), skipping"
-              exit 0
-            fi
+            log "Found flake.nix! Starting system rebuild..."
+            log "This may take a few minutes..."
 
-            echo "Rebuilding..."
-            nixos-rebuild switch --flake "$FLAKE_PATH#$HOSTNAME"
-            echo "Done!"
+            if nixos-rebuild switch --flake "$FLAKE_PATH#$HOSTNAME" -L; then
+              success "System Rebuild Completed Successfully!"
+              touch /var/lib/nixos-avf-setup-done
+            else
+              error "System Rebuild Failed!"
+              exit 1
+            fi
           '';
         };
 

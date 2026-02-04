@@ -22,6 +22,7 @@
         fileSystems."/" = {
           device = "/dev/vda";
           fsType = "ext4";
+          autoResize = true;
         };
         fileSystems."/etc/nixos" = {
           device = "dotfiles";
@@ -63,11 +64,9 @@
             Type = "oneshot";
             RemainAfterExit = true;
           };
-          path = [ pkgs.e2fsprogs pkgs.util-linux ];
+          path = [ pkgs.e2fsprogs ];
           script = ''
-            set -euo pipefail
-            ROOT_DEV=$(findmnt -n -o SOURCE /)
-            resize2fs "$ROOT_DEV" || true
+            resize2fs /dev/vda || true
           '';
         };
 
@@ -96,7 +95,7 @@
               exit 0
             fi
 
-            if ! nix flake show "$FLAKE_PATH" 2>/dev/null | grep -q "nixosConfigurations\.$HOSTNAME"; then
+            if ! nix eval "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" 2>/dev/null; then
               echo "No nixosConfigurations.$HOSTNAME found in flake, skipping auto-rebuild"
               exit 0
             fi

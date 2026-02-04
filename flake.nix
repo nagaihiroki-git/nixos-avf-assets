@@ -36,6 +36,7 @@
         networking.hostName = "nixos-avf";
 
         boot.loader.grub.enable = false;
+        boot.initrd.checkJournalingFS = true;
 
         nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
@@ -55,21 +56,6 @@
           wget
         ];
 
-        systemd.services.resize-root = {
-          description = "Resize root filesystem to fill disk";
-          wantedBy = [ "multi-user.target" ];
-          before = [ "nixos-avf-rebuild.service" ];
-          after = [ "local-fs.target" ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-          };
-          path = [ pkgs.e2fsprogs ];
-          script = ''
-            resize2fs /dev/vda || true
-          '';
-        };
-
         systemd.services.nixos-avf-rebuild = {
           description = "Auto rebuild NixOS from VirtioFS flake";
           wantedBy = [ "multi-user.target" ];
@@ -79,12 +65,20 @@
             Type = "oneshot";
             RemainAfterExit = true;
           };
-          path = [ pkgs.nix pkgs.nixos-rebuild pkgs.git pkgs.coreutils pkgs.gnugrep pkgs.inetutils pkgs.iputils ];
+          path = [ pkgs.nix pkgs.nixos-rebuild pkgs.git pkgs.coreutils pkgs.gnugrep pkgs.inetutils pkgs.iputils pkgs.e2fsprogs ];
           script = ''
             set -euo pipefail
 
             FLAKE_PATH="/etc/nixos"
             HOSTNAME=$(hostname)
+
+            # Check filesystem integrity before any writes
+            echo "Checking filesystem integrity..."
+            if ! e2fsck -n /dev/vda > /dev/null 2>&1; then
+              echo "!!! Filesystem error detected on /dev/vda !!!"
+              echo "Run 'e2fsck -y /dev/vda' manually to repair."
+              exit 1
+            fi
 
             # Wait for network
             for i in $(seq 1 60); do

@@ -49,8 +49,8 @@
         boot.growPartition = true;
 
         fileSystems."/" = {
-          device = "/dev/vda2";
-          fsType = "ext4";
+          device = lib.mkForce "/dev/vda2";
+          fsType = lib.mkForce "ext4";
           autoResize = true;
         };
 

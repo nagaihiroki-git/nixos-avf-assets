@@ -1,13 +1,9 @@
 {
   description = "Minimal NixOS for AVF with GPT Support";
 
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    disko.url = "github:nix-community/disko";
-    disko.inputs.nixpkgs.follows = "nixpkgs";
-  };
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-  outputs = { self, nixpkgs, disko }:
+  outputs = { self, nixpkgs }:
     let
       system = "aarch64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
@@ -15,38 +11,15 @@
       configuration = { config, lib, modulesPath, pkgs, ... }: {
         imports = [
           "${modulesPath}/profiles/minimal.nix"
-          disko.nixosModules.disko
         ];
-
-        disko.devices = {
-          disk = {
-            main = {
-              device = "/dev/vda";
-              type = "disk";
-              content = {
-                type = "gpt";
-                partitions = {
-                  root = {
-                    size = "100%";
-                    content = {
-                      type = "filesystem";
-                      format = "ext4";
-                      mountpoint = "/";
-                    };
-                  };
-                };
-              };
-            };
-          };
-        };
 
         boot.kernelParams = [ "console=hvc0" ];
         boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_gpu" "virtio_net" "virtiofs" ];
         boot.growPartition = true;
 
         fileSystems."/" = {
-          device = lib.mkForce "/dev/vda1";
-          fsType = lib.mkForce "ext4";
+          device = "/dev/vda1";
+          fsType = "ext4";
           autoResize = true;
         };
 

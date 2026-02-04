@@ -51,7 +51,7 @@
             StandardOutput = "journal+console";
             StandardError = "journal+console";
           };
-          path = with pkgs; [ nix nixos-rebuild git coreutils gnugrep inetutils iputils gzip systemd ];
+          path = with pkgs; [ nix git coreutils gnugrep inetutils iputils systemd ];
           script = ''
             set -euo pipefail
 
@@ -73,34 +73,23 @@
                 success "Network is up!"
                 break
               fi
-              echo -n "." > /dev/console
               sleep 1
             done
-            echo "" > /dev/console
 
-            if [ ! -f "$FLAKE_PATH/flake.nix" ]; then
-              log "No flake.nix found at $FLAKE_PATH, skipping"
-              exit 0
-            fi
+            [ ! -f "$FLAKE_PATH/flake.nix" ] && { log "No flake.nix, skipping"; exit 0; }
 
-            log "Checking configuration..."
-            if ! nix eval "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" 2>&1; then
-              error "Configuration not found for $HOSTNAME"
-              exit 0
-            fi
+            log "Building system..."
+            SYSTEM=$(nix build "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" --no-link --print-out-paths 2>&1 | tee /dev/console | tail -1)
 
-            log "Building system (this may take a while)..."
+            [ -z "$SYSTEM" ] || [ ! -d "$SYSTEM" ] && { error "Build failed!"; exit 1; }
 
-            if nixos-rebuild boot --flake "$FLAKE_PATH#$HOSTNAME" -L 2>&1 | tee /dev/console; then
-              success "Build completed! Rebooting to activate new system..."
-              touch /var/lib/nixos-avf-setup-done
-              sync
-              sleep 2
-              reboot
-            else
-              error "Build failed!"
-              exit 1
-            fi
+            success "Build done: $SYSTEM"
+
+            "$SYSTEM/bin/switch-to-configuration" boot
+
+            touch /var/lib/nixos-avf-setup-done
+            success "Rebooting..."
+            sync && reboot
           '';
         };
 

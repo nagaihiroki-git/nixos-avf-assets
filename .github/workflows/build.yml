@@ -16,7 +16,8 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Build
-        run: nix build
+        run: |
+          nix build
           cp -L result/vmlinuz vmlinuz
           cp -L result/initrd.img initrd.img
 

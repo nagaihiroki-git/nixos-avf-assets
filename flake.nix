@@ -110,17 +110,21 @@
         initrd = nixos.config.system.build.initialRamdisk;
 
         rootfs = pkgs.runCommand "nixos-avf-gpt-image" {
-          nativeBuildInputs = [ pkgs.gptfdisk ];
+          nativeBuildInputs = [ pkgs.gptfdisk pkgs.e2fsprogs ];
         } ''
-          PART_IMAGE=${rootfsPartition}
-          PART_SIZE=$(stat -c%s "$PART_IMAGE")
+          PART_SIZE=$(stat -c%s "${rootfsPartition}")
+
+          # Copy partition image to writable location and fix checksums
+          cp ${rootfsPartition} part.img
+          chmod +w part.img
+          e2fsck -fy part.img || true
 
           DISK_IMAGE=main.raw
           truncate -s $((PART_SIZE + 2 * 1024 * 1024)) $DISK_IMAGE
 
           sgdisk -n 1:2048:0 -t 1:8300 $DISK_IMAGE
 
-          dd if="$PART_IMAGE" of="$DISK_IMAGE" bs=512 seek=2048 conv=notrunc
+          dd if=part.img of="$DISK_IMAGE" bs=512 seek=2048 conv=notrunc
 
           mkdir -p $out
           cp $DISK_IMAGE $out/main.raw

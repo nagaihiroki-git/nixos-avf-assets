@@ -51,7 +51,7 @@
             StandardOutput = "journal+console";
             StandardError = "journal+console";
           };
-          path = with pkgs; [ nix nixos-rebuild git coreutils gnugrep inetutils iputils gzip ];
+          path = with pkgs; [ nix nixos-rebuild git coreutils gnugrep inetutils iputils gzip systemd ];
           script = ''
             set -euo pipefail
 
@@ -60,9 +60,9 @@
             RED='\033[0;31m'
             NC='\033[0m'
 
-            log() { echo -e "''${YELLOW}[AutoSetup] $1''${NC}"; }
-            success() { echo -e "''${GREEN}[AutoSetup] $1''${NC}"; }
-            error() { echo -e "''${RED}[AutoSetup] ERROR: $1''${NC}"; }
+            log() { echo -e "''${YELLOW}[nixos-avf] $1''${NC}" > /dev/console; }
+            success() { echo -e "''${GREEN}[nixos-avf] $1''${NC}" > /dev/console; }
+            error() { echo -e "''${RED}[nixos-avf] ERROR: $1''${NC}" > /dev/console; }
 
             FLAKE_PATH="/etc/nixos"
             HOSTNAME=$(hostname)
@@ -70,30 +70,35 @@
             log "Waiting for network..."
             for i in $(seq 1 60); do
               if ping -c 1 github.com > /dev/null 2>&1; then
-                success "Network is UP!"
+                success "Network is up!"
                 break
               fi
+              echo -n "." > /dev/console
               sleep 1
             done
-
-            for i in $(seq 1 30); do
-              [ -f "$FLAKE_PATH/flake.nix" ] && break
-              sleep 1
-            done
+            echo "" > /dev/console
 
             if [ ! -f "$FLAKE_PATH/flake.nix" ]; then
-              log "No flake.nix found at $FLAKE_PATH, skipping."
+              log "No flake.nix found at $FLAKE_PATH, skipping"
               exit 0
             fi
 
-            log "Found flake.nix! Starting system rebuild..."
-            log "This may take a few minutes..."
+            log "Checking configuration..."
+            if ! nix eval "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" 2>&1; then
+              error "Configuration not found for $HOSTNAME"
+              exit 0
+            fi
 
-            if nixos-rebuild switch --flake "$FLAKE_PATH#$HOSTNAME" -L; then
-              success "System Rebuild Completed Successfully!"
+            log "Building system (this may take a while)..."
+
+            if nixos-rebuild boot --flake "$FLAKE_PATH#$HOSTNAME" -L 2>&1 | tee /dev/console; then
+              success "Build completed! Rebooting to activate new system..."
               touch /var/lib/nixos-avf-setup-done
+              sync
+              sleep 2
+              reboot
             else
-              error "System Rebuild Failed!"
+              error "Build failed!"
               exit 1
             fi
           '';

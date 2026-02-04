@@ -7,20 +7,16 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
       - uses: DeterminateSystems/nix-installer-action@main
-        with:
-          extra-conf: |
-            extra-platforms = aarch64-linux
 
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Build
-        run: |
-          nix build .# --system aarch64-linux
+        run: nix build
           cp -L result/vmlinuz vmlinuz
           cp -L result/initrd.img initrd.img
 

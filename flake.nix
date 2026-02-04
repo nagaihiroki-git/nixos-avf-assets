@@ -48,6 +48,12 @@
         boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_gpu" "virtio_net" "virtiofs" ];
         boot.growPartition = true;
 
+        fileSystems."/" = {
+          device = "/dev/vda2";
+          fsType = "ext4";
+          autoResize = true;
+        };
+
         fileSystems."/etc/nixos" = {
           device = "dotfiles";
           fsType = "virtiofs";

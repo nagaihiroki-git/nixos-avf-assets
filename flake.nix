@@ -54,6 +54,23 @@
           wget
         ];
 
+        systemd.services.resize-root = {
+          description = "Resize root filesystem to fill disk";
+          wantedBy = [ "multi-user.target" ];
+          before = [ "nixos-avf-rebuild.service" ];
+          after = [ "local-fs.target" ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+          };
+          path = [ pkgs.e2fsprogs pkgs.util-linux ];
+          script = ''
+            set -euo pipefail
+            ROOT_DEV=$(findmnt -n -o SOURCE /)
+            resize2fs "$ROOT_DEV" || true
+          '';
+        };
+
         systemd.services.nixos-avf-rebuild = {
           description = "Auto rebuild NixOS from VirtioFS flake";
           wantedBy = [ "multi-user.target" ];

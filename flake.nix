@@ -1,5 +1,5 @@
 {
-  description = "Minimal NixOS for AVF with Disko (GPT Support)";
+  description = "Minimal NixOS for AVF with GPT Support";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -125,18 +125,45 @@
         inherit system;
         modules = [ configuration ];
       };
+
+      rootfsPartition = pkgs.callPackage "${nixpkgs}/nixos/lib/make-ext4-fs.nix" {
+        storePaths = [ nixos.config.system.build.toplevel ];
+        volumeLabel = "nixos";
+        populateImageCommands = ''
+          mkdir -p ./files/etc
+          echo "nixos-avf" > ./files/etc/hostname
+          ln -s ${nixos.config.system.build.toplevel}/init ./files/init
+        '';
+      };
     in
     {
       packages.${system} = {
         kernel = nixos.config.system.build.kernel;
         initrd = nixos.config.system.build.initialRamdisk;
-        rootfs = nixos.config.system.build.diskoImages;
+
+        rootfs = pkgs.runCommand "nixos-avf-gpt-image" {
+          nativeBuildInputs = [ pkgs.gptfdisk ];
+        } ''
+          PART_IMAGE=${rootfsPartition}
+          PART_SIZE=$(stat -c%s "$PART_IMAGE")
+
+          DISK_IMAGE=main.raw
+          truncate -s $((PART_SIZE + 10 * 1024 * 1024)) $DISK_IMAGE
+
+          sgdisk -n 1:2048:4095 -t 1:EF02 $DISK_IMAGE
+          sgdisk -n 2:4096:0 -t 2:8300 $DISK_IMAGE
+
+          dd if="$PART_IMAGE" of="$DISK_IMAGE" bs=512 seek=4096 conv=notrunc
+
+          mkdir -p $out
+          cp $DISK_IMAGE $out/main.raw
+        '';
 
         default = pkgs.runCommand "avf-assets" { nativeBuildInputs = [ pkgs.zstd ]; } ''
           mkdir -p $out
           cp ${nixos.config.system.build.kernel}/${nixos.config.system.boot.loader.kernelFile} $out/vmlinuz
           cp ${nixos.config.system.build.initialRamdisk}/${nixos.config.system.boot.loader.initrdFile} $out/initrd.img
-          zstd -19 -T0 ${nixos.config.system.build.diskoImages}/main.raw -o $out/seed.raw.zst
+          zstd -19 -T0 ${self.packages.${system}.rootfs}/main.raw -o $out/seed.raw.zst
         '';
       };
     };

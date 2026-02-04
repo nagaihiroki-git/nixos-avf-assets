@@ -1,29 +1,52 @@
 {
-  description = "Minimal NixOS kernel, initrd and rootfs for Apple Virtualization Framework";
+  description = "Minimal NixOS for AVF with Disko (GPT Support)";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    disko.url = "github:nix-community/disko";
+    disko.inputs.nixpkgs.follows = "nixpkgs";
+  };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, disko }:
     let
       system = "aarch64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
 
       configuration = { config, lib, modulesPath, pkgs, ... }: {
-        imports = [ "${modulesPath}/profiles/minimal.nix" ];
+        imports = [
+          "${modulesPath}/profiles/minimal.nix"
+          disko.nixosModules.disko
+        ];
+
+        disko.devices = {
+          disk = {
+            main = {
+              device = "/dev/vda";
+              type = "disk";
+              content = {
+                type = "gpt";
+                partitions = {
+                  boot = {
+                    size = "1M";
+                    type = "EF02";
+                  };
+                  root = {
+                    size = "100%";
+                    content = {
+                      type = "ext4";
+                      mountpoint = "/";
+                    };
+                  };
+                };
+              };
+            };
+          };
+        };
 
         boot.kernelParams = [ "console=hvc0" ];
-        boot.initrd.availableKernelModules = [
-          "virtio_pci" "virtio_blk" "virtio_gpu" "virtio_net" "virtiofs"
-        ];
-        boot.initrd.kernelModules = [
-          "virtio_pci" "virtio_blk" "virtio_gpu" "virtio_net" "virtiofs"
-        ];
+        boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_gpu" "virtio_net" "virtiofs" ];
+        boot.growPartition = true;
 
-        fileSystems."/" = {
-          device = "/dev/vda";
-          fsType = "ext4";
-          autoResize = true;
-        };
         fileSystems."/etc/nixos" = {
           device = "dotfiles";
           fsType = "virtiofs";
@@ -32,28 +55,12 @@
 
         users.users.root.initialPassword = "";
         services.getty.autologinUser = "root";
-
         networking.hostName = "nixos-avf";
-
         boot.loader.grub.enable = false;
-        boot.initrd.checkJournalingFS = true;
-
         nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
         environment.systemPackages = with pkgs; [
-          coreutils
-          gnused
-          gnugrep
-          gawk
-          findutils
-          diffutils
-          bash
-          gnutar
-          gzip
-          xz
-          git
-          curl
-          wget
+          git curl wget e2fsprogs
         ];
 
         systemd.services.nixos-avf-rebuild = {
@@ -72,15 +79,13 @@
             FLAKE_PATH="/etc/nixos"
             HOSTNAME=$(hostname)
 
-            # Check filesystem integrity before any writes
             echo "Checking filesystem integrity..."
-            if ! e2fsck -n /dev/vda > /dev/null 2>&1; then
-              echo "!!! Filesystem error detected on /dev/vda !!!"
-              echo "Run 'e2fsck -y /dev/vda' manually to repair."
+            if ! e2fsck -n /dev/vda2 > /dev/null 2>&1; then
+              echo "!!! Filesystem error detected on /dev/vda2 !!!"
+              echo "Run 'e2fsck -y /dev/vda2' manually to repair."
               exit 1
             fi
 
-            # Wait for network
             for i in $(seq 1 60); do
               if ping -c 1 github.com > /dev/null 2>&1; then
                 echo "Network is up"
@@ -119,27 +124,18 @@
         inherit system;
         modules = [ configuration ];
       };
-
-      rootfsImage = pkgs.callPackage "${nixpkgs}/nixos/lib/make-ext4-fs.nix" {
-        storePaths = [ nixos.config.system.build.toplevel ];
-        volumeLabel = "nixos";
-        populateImageCommands = ''
-          mkdir -p ./files/etc
-          echo "nixos-avf" > ./files/etc/hostname
-          ln -s ${nixos.config.system.build.toplevel}/init ./files/init
-        '';
-      };
     in
     {
       packages.${system} = {
         kernel = nixos.config.system.build.kernel;
         initrd = nixos.config.system.build.initialRamdisk;
-        rootfs = rootfsImage;
+        rootfs = nixos.config.system.build.diskoImages;
+
         default = pkgs.runCommand "avf-assets" { nativeBuildInputs = [ pkgs.zstd ]; } ''
           mkdir -p $out
           cp ${nixos.config.system.build.kernel}/${nixos.config.system.boot.loader.kernelFile} $out/vmlinuz
           cp ${nixos.config.system.build.initialRamdisk}/${nixos.config.system.boot.loader.initrdFile} $out/initrd.img
-          zstd -19 -T0 ${rootfsImage} -o $out/seed.raw.zst
+          zstd -19 -T0 ${nixos.config.system.build.diskoImages}/main.raw -o $out/seed.raw.zst
         '';
       };
     };

@@ -26,10 +26,6 @@
               content = {
                 type = "gpt";
                 partitions = {
-                  boot = {
-                    size = "1M";
-                    type = "EF02";
-                  };
                   root = {
                     size = "100%";
                     content = {
@@ -49,7 +45,7 @@
         boot.growPartition = true;
 
         fileSystems."/" = {
-          device = lib.mkForce "/dev/vda2";
+          device = lib.mkForce "/dev/vda1";
           fsType = lib.mkForce "ext4";
           autoResize = true;
         };
@@ -67,7 +63,7 @@
         nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
         environment.systemPackages = with pkgs; [
-          git curl wget e2fsprogs
+          git curl wget
         ];
 
         systemd.services.nixos-avf-rebuild = {
@@ -79,19 +75,12 @@
             Type = "oneshot";
             RemainAfterExit = true;
           };
-          path = [ pkgs.nix pkgs.nixos-rebuild pkgs.git pkgs.coreutils pkgs.gnugrep pkgs.inetutils pkgs.iputils pkgs.e2fsprogs ];
+          path = [ pkgs.nix pkgs.nixos-rebuild pkgs.git pkgs.coreutils pkgs.gnugrep pkgs.inetutils pkgs.iputils ];
           script = ''
             set -euo pipefail
 
             FLAKE_PATH="/etc/nixos"
             HOSTNAME=$(hostname)
-
-            echo "Checking filesystem integrity..."
-            if ! e2fsck -n /dev/vda2 > /dev/null 2>&1; then
-              echo "!!! Filesystem error detected on /dev/vda2 !!!"
-              echo "Run 'e2fsck -y /dev/vda2' manually to repair."
-              exit 1
-            fi
 
             for i in $(seq 1 60); do
               if ping -c 1 github.com > /dev/null 2>&1; then
@@ -154,12 +143,11 @@
           PART_SIZE=$(stat -c%s "$PART_IMAGE")
 
           DISK_IMAGE=main.raw
-          truncate -s $((PART_SIZE + 10 * 1024 * 1024)) $DISK_IMAGE
+          truncate -s $((PART_SIZE + 2 * 1024 * 1024)) $DISK_IMAGE
 
-          sgdisk -n 1:2048:4095 -t 1:EF02 $DISK_IMAGE
-          sgdisk -n 2:4096:0 -t 2:8300 $DISK_IMAGE
+          sgdisk -n 1:2048:0 -t 1:8300 $DISK_IMAGE
 
-          dd if="$PART_IMAGE" of="$DISK_IMAGE" bs=512 seek=4096 conv=notrunc
+          dd if="$PART_IMAGE" of="$DISK_IMAGE" bs=512 seek=2048 conv=notrunc
 
           mkdir -p $out
           cp $DISK_IMAGE $out/main.raw

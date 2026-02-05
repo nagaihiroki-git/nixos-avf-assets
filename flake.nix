@@ -130,7 +130,7 @@
           e2fsck -fy part.img || true
 
           DISK_IMAGE=main.raw
-          truncate -s $((PART_SIZE + 2 * 1024 * 1024)) $DISK_IMAGE
+          truncate -s $((PART_SIZE + 4 * 1024 * 1024)) $DISK_IMAGE
 
           sgdisk -n 1:2048:0 -t 1:8300 $DISK_IMAGE
 

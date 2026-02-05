@@ -28,17 +28,17 @@ jobs:
 
       - name: Create Btrfs root image
         run: |
-          sudo apt-get install -y btrfs-progs gdisk
+          sudo apt-get install -y btrfs-progs
 
           TOPLEVEL=$(cat toplevel-path)
 
-          # Create 2GB Btrfs image
-          truncate -s 2G rootfs.img
+          # Create 4GB Btrfs image
+          truncate -s 4G rootfs.img
           mkfs.btrfs -L nixos rootfs.img
 
           # Mount and populate
           sudo mkdir -p /mnt/nixos
-          sudo mount -o loop rootfs.img /mnt/nixos
+          sudo mount -o loop,compress=zstd:1 rootfs.img /mnt/nixos
 
           sudo mkdir -p /mnt/nixos/nix/store
           sudo mkdir -p /mnt/nixos/etc
@@ -49,13 +49,15 @@ jobs:
           done
 
           # Create basic files
-          echo "nixos-avf" | sudo tee /mnt/nixos/etc/hostname
+          echo "pawn-vm" | sudo tee /mnt/nixos/etc/hostname
           sudo ln -s "$TOPLEVEL/init" /mnt/nixos/init
 
           sudo umount /mnt/nixos
 
       - name: Create GPT disk image
         run: |
+          sudo apt-get install -y gdisk
+
           PART_SIZE=$(stat -c%s rootfs.img)
           DISK_SIZE=$((PART_SIZE + 8 * 1024 * 1024))
 
@@ -74,3 +76,5 @@ jobs:
             vmlinuz
             initrd.img
             seed.raw.zst
+            ssh/insecure_key
+            ssh/insecure_key.pub

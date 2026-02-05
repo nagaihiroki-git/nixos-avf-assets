@@ -1,5 +1,5 @@
 {
-  description = "Minimal NixOS for AVF with GPT Support";
+  description = "Pawn-VM: Pure SSH NixOS on Apple Virtualization Framework";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -9,95 +9,70 @@
       pkgs = nixpkgs.legacyPackages.${system};
 
       configuration = { config, lib, modulesPath, pkgs, ... }: {
-        imports = [
-          "${modulesPath}/profiles/minimal.nix"
-        ];
+        imports = [ "${modulesPath}/profiles/minimal.nix" ];
 
-        boot.kernelParams = [ "console=hvc0" ];
-        boot.initrd.availableKernelModules = [
-          "virtio_pci" "virtio_blk" "virtio_gpu" "virtio_net" "virtiofs"
-          "btrfs"
-        ];
+        # Boot & Console
+        boot.kernelParams = [ "console=hvc0" "elevator=none" ];
+        boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_net" "btrfs" ];
         boot.growPartition = true;
+        boot.loader.grub.enable = false;
 
+        # Storage (Btrfs with CoW + checksums)
         fileSystems."/" = {
           device = "/dev/vda1";
           fsType = "btrfs";
-          options = [ "compress=zstd" "noatime" ];
+          options = [ "compress=zstd:1" "noatime" "discard=async" "commit=60" ];
         };
 
-        fileSystems."/etc/nixos" = {
-          device = "dotfiles";
-          fsType = "virtiofs";
-          options = [ "nofail" ];
-        };
+        # Build acceleration (tmpfs for /tmp)
+        boot.tmp.useTmpfs = true;
+        boot.tmp.tmpfsSize = "50%";
 
-        users.users.root.initialPassword = "";
-        services.getty.autologinUser = "root";
-        networking.hostName = "nixos-avf";
-        boot.loader.grub.enable = false;
-        nix.settings.experimental-features = [ "nix-command" "flakes" ];
-
-        environment.systemPackages = with pkgs; [
-          git curl wget
-        ];
-
-        systemd.services.nixos-avf-rebuild = {
-          description = "Auto rebuild NixOS from VirtioFS flake (First Boot Only)";
+        # Auto-resize Btrfs on boot
+        systemd.services.btrfs-resize = {
+          description = "Resize Btrfs to fill partition";
           wantedBy = [ "multi-user.target" ];
-          wants = [ "network-online.target" ];
-          after = [ "network-online.target" ];
-          unitConfig.ConditionPathExists = "!/var/lib/nixos-avf-setup-done";
+          after = [ "local-fs.target" ];
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
-            StandardOutput = "journal+console";
-            StandardError = "journal+console";
+            ExecStart = "${pkgs.btrfs-progs}/bin/btrfs filesystem resize max /";
           };
-          path = with pkgs; [ nix git coreutils gnugrep inetutils iputils systemd ];
-          script = ''
-            set -euo pipefail
-
-            GREEN='\033[0;32m'
-            YELLOW='\033[1;33m'
-            RED='\033[0;31m'
-            NC='\033[0m'
-
-            log() { echo -e "''${YELLOW}[nixos-avf] $1''${NC}" > /dev/console; }
-            success() { echo -e "''${GREEN}[nixos-avf] $1''${NC}" > /dev/console; }
-            error() { echo -e "''${RED}[nixos-avf] ERROR: $1''${NC}" > /dev/console; }
-
-            FLAKE_PATH="/etc/nixos"
-            HOSTNAME=$(hostname)
-
-            log "Waiting for network..."
-            for i in $(seq 1 60); do
-              if ping -c 1 github.com > /dev/null 2>&1; then
-                success "Network is up!"
-                break
-              fi
-              sleep 1
-            done
-
-            [ ! -f "$FLAKE_PATH/flake.nix" ] && { log "No flake.nix, skipping"; exit 0; }
-
-            log "Building system..."
-            SYSTEM=$(nix build "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" \
-              --no-link --print-out-paths \
-              --max-jobs 1 --option max-substitution-jobs 1 \
-              2>&1 | tee /dev/console | tail -1)
-
-            [ -z "$SYSTEM" ] || [ ! -d "$SYSTEM" ] && { error "Build failed!"; exit 1; }
-
-            success "Build done: $SYSTEM"
-
-            "$SYSTEM/bin/switch-to-configuration" boot
-
-            touch /var/lib/nixos-avf-setup-done
-            success "Rebooting..."
-            sync && reboot
-          '';
         };
+
+        # Network & SSH
+        networking.hostName = "pawn-vm";
+        networking.firewall.allowedTCPPorts = [ 22 ];
+
+        services.openssh = {
+          enable = true;
+          settings = {
+            PermitRootLogin = "prohibit-password";
+            PasswordAuthentication = false;
+          };
+        };
+
+        # mDNS (pawn-vm.local)
+        services.avahi = {
+          enable = true;
+          nssmdns4 = true;
+          publish = {
+            enable = true;
+            addresses = true;
+          };
+        };
+
+        # Root user with insecure key
+        users.users.root = {
+          openssh.authorizedKeys.keys = [
+            # INSECURE KEY - Public, provides NO security. Replace for non-local use.
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBYmCMI27aEewlbDkLqFDuc2VXrz3aK8cwy7G5xZAJTR pawn-vm-insecure-key"
+          ];
+        };
+
+        # Minimal packages
+        nix.settings.experimental-features = [ "nix-command" "flakes" ];
+        environment.systemPackages = with pkgs; [ git btrfs-progs ];
 
         system.stateVersion = "24.11";
       };
@@ -110,6 +85,9 @@
       closureInfo = pkgs.closureInfo { rootPaths = [ nixos.config.system.build.toplevel ]; };
     in
     {
+      # NixOS configuration for remote rebuild
+      nixosConfigurations.pawn-vm = nixos;
+
       packages.${system} = {
         kernel = nixos.config.system.build.kernel;
         initrd = nixos.config.system.build.initialRamdisk;

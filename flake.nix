@@ -16,7 +16,7 @@
 
         # VM only - disable hardware drivers, use 16KB kernel only
         hardware.asahi.enable = false;
-        boot.kernelPackages = apple-silicon.packages.${system}.linux-asahi;
+        boot.kernelPackages = pkgs.linuxPackagesFor apple-silicon.packages.${system}.linux-asahi;
 
         # Boot & Console
         boot.kernelParams = [ "console=hvc0" "swiotlb=65536" ];

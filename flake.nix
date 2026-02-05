@@ -107,7 +107,6 @@
       rootfsPartition = pkgs.callPackage "${nixpkgs}/nixos/lib/make-ext4-fs.nix" {
         storePaths = [ nixos.config.system.build.toplevel ];
         volumeLabel = "nixos";
-        extraArgs = [ "-O" "^metadata_csum" ];
         populateImageCommands = ''
           mkdir -p ./files/etc
           echo "nixos-avf" > ./files/etc/hostname

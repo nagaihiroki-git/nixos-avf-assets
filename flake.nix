@@ -12,7 +12,7 @@
         imports = [ "${modulesPath}/profiles/minimal.nix" ];
 
         # Boot & Console
-        boot.kernelParams = [ "console=hvc0" "elevator=none" ];
+        boot.kernelParams = [ "console=hvc0" "elevator=none" "bpf_jit_enable=0" ];
         boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_net" "btrfs" ];
         boot.growPartition = true;
         boot.loader.grub.enable = false;

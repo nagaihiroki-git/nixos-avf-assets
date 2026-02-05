@@ -25,6 +25,19 @@ jobs:
           cp -L result/initrd.img initrd.img
           cp -L result/seed.raw.zst seed.raw.zst
 
+      - name: Fix EXT4 checksums
+        run: |
+          zstd -d seed.raw.zst -o seed.raw
+          rm seed.raw.zst
+
+          # Partition starts at sector 2048 (1MiB offset)
+          LOOP=$(sudo losetup --find --show --offset 1048576 seed.raw)
+          sudo e2fsck -fy "$LOOP" || true
+          sudo losetup -d "$LOOP"
+
+          zstd -19 -T0 seed.raw -o seed.raw.zst
+          rm seed.raw
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:

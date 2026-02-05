@@ -41,8 +41,8 @@ jobs:
           # Setup loop device with partition scanning
           LOOP=$(sudo losetup -fP --show seed.raw)
 
-          # Format partition directly (proper alignment)
-          sudo mkfs.btrfs -L nixos "${LOOP}p1"
+          # Format partition directly (node size = 4k to match kernel page size)
+          sudo mkfs.btrfs -L nixos -n 4k "${LOOP}p1"
 
           # Mount and populate
           sudo mkdir -p /mnt/nixos

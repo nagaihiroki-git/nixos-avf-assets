@@ -26,19 +26,27 @@ jobs:
           cp -L result/store-paths store-paths
           cp -L result/toplevel-path toplevel-path
 
-      - name: Create Btrfs root image
+      - name: Create GPT disk with Btrfs
         run: |
-          sudo apt-get install -y btrfs-progs
+          sudo apt-get install -y gdisk btrfs-progs
 
           TOPLEVEL=$(cat toplevel-path)
 
-          # Create 4GB Btrfs image
-          truncate -s 4G rootfs.img
-          mkfs.btrfs -L nixos rootfs.img
+          # Create 5GB disk image (room for growth)
+          truncate -s 5G seed.raw
+
+          # Create GPT with 4KB alignment
+          sgdisk -a 4096 -n 1:2048:0 -t 1:8300 seed.raw
+
+          # Setup loop device with partition scanning
+          LOOP=$(sudo losetup -fP --show seed.raw)
+
+          # Format partition directly (proper alignment)
+          sudo mkfs.btrfs -L nixos "${LOOP}p1"
 
           # Mount and populate
           sudo mkdir -p /mnt/nixos
-          sudo mount -o loop,compress=zstd:1 rootfs.img /mnt/nixos
+          sudo mount -o compress=zstd:1 "${LOOP}p1" /mnt/nixos
 
           sudo mkdir -p /mnt/nixos/nix/store
           sudo mkdir -p /mnt/nixos/etc
@@ -52,20 +60,12 @@ jobs:
           echo "pawn-vm" | sudo tee /mnt/nixos/etc/hostname
           sudo ln -s "$TOPLEVEL/init" /mnt/nixos/init
 
+          # Sync and unmount
+          sync
           sudo umount /mnt/nixos
+          sudo losetup -d "$LOOP"
 
-      - name: Create GPT disk image
-        run: |
-          sudo apt-get install -y gdisk
-
-          PART_SIZE=$(stat -c%s rootfs.img)
-          DISK_SIZE=$((PART_SIZE + 8 * 1024 * 1024))
-
-          truncate -s $DISK_SIZE seed.raw
-          sgdisk -n 1:2048:0 -t 1:8300 seed.raw
-
-          dd if=rootfs.img of=seed.raw bs=512 seek=2048 conv=notrunc
-
+          # Compress
           zstd -19 -T0 seed.raw -o seed.raw.zst
 
       - name: Release

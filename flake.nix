@@ -21,7 +21,7 @@
         fileSystems."/" = {
           device = "/dev/vda1";
           fsType = "btrfs";
-          options = [ "compress=zstd:1" "noatime" "discard=async" "commit=60" ];
+          options = [ "compress=zstd:1" "noatime" "space_cache=v2" ];
         };
 
         # Build acceleration (tmpfs for /tmp)
@@ -32,7 +32,7 @@
         systemd.services.btrfs-resize = {
           description = "Resize Btrfs to fill partition";
           wantedBy = [ "multi-user.target" ];
-          after = [ "local-fs.target" ];
+          after = [ "local-fs.target" "systemd-journald.service" ];
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;

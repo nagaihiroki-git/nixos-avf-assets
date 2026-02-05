@@ -20,7 +20,8 @@
 
         # Boot & Console
         boot.kernelParams = [ "console=hvc0" "swiotlb=65536" ];
-        boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_net" "xfs" ];
+        boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_net" ];
+        boot.initrd.supportedFilesystems = [ "xfs" ];
         boot.growPartition = true;
         boot.loader.grub.enable = false;
 

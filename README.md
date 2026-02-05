@@ -81,7 +81,7 @@ builders-use-substitutes = true
 │  │  Pawn-VM (AVF Guest)                          │  │
 │  │  ┌─────────────────────────────────────────┐  │  │
 │  │  │  /tmp (tmpfs 50% RAM) ← Build here      │  │  │
-│  │  │  / (Btrfs, zstd:1, CoW)                 │  │  │
+│  │  │  / (XFS, auto-grow)                     │  │  │
 │  │  │  SSH + Avahi (pawn-vm.local)            │  │  │
 │  │  └─────────────────────────────────────────┘  │  │
 │  └───────────────────────────────────────────────┘  │
@@ -92,9 +92,10 @@ builders-use-substitutes = true
 
 | Component | Value |
 |-----------|-------|
-| Filesystem | Btrfs (`compress=zstd:1,noatime,discard=async,commit=60`) |
+| Kernel | Asahi Linux (16KB page size) |
+| Filesystem | XFS (`noatime`, auto-grow on boot) |
 | /tmp | tmpfs (50% RAM) |
-| Initial Disk | 4GB (auto-expands on boot) |
+| Initial Disk | 5GB (auto-expands on boot) |
 | SSH | Port 22, key-only |
 | mDNS | `pawn-vm.local` |
 

@@ -16,12 +16,12 @@
         boot.kernelParams = [ "console=hvc0" ];
         boot.initrd.availableKernelModules = [
           "virtio_pci" "virtio_blk" "virtio_gpu" "virtio_net" "virtiofs"
-          "nvme" "btrfs"
+          "btrfs"
         ];
         boot.growPartition = true;
 
         fileSystems."/" = {
-          device = "/dev/nvme0n1p1";
+          device = "/dev/vda1";
           fsType = "btrfs";
           options = [ "compress=zstd" "noatime" ];
         };

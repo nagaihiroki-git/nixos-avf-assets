@@ -1,42 +1,55 @@
 {
-  description = "Pawn-VM: Pure SSH NixOS on Apple Virtualization Framework";
+  description = "Pawn-VM: Pure SSH NixOS on Apple Virtualization Framework (16KB + XFS)";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixos-apple-silicon = {
+      url = "github:tpwrules/nixos-apple-silicon";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, nixos-apple-silicon }:
     let
       system = "aarch64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
 
       configuration = { config, lib, modulesPath, pkgs, ... }: {
-        imports = [ "${modulesPath}/profiles/minimal.nix" ];
+        imports = [
+          "${modulesPath}/profiles/minimal.nix"
+          nixos-apple-silicon.nixosModules.apple-silicon-support
+        ];
 
-        # Boot & Console
-        boot.kernelParams = [ "console=hvc0" "elevator=none" "bpf_jit_enable=0" ];
-        boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_net" "btrfs" ];
+        # 16KB page size kernel (Asahi Linux)
+        hardware.asahi.enable = true;
+        boot.kernelPackages = pkgs.linuxPackagesFor (pkgs.callPackage "${nixos-apple-silicon}/packages/linux-asahi" {});
+
+        # Boot & Console (JIT enabled - safe with 16KB pages)
+        boot.kernelParams = [ "console=hvc0" "elevator=none" ];
+        boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_net" "xfs" ];
         boot.growPartition = true;
         boot.loader.grub.enable = false;
 
-        # Storage (Btrfs with CoW + checksums)
+        # Storage (XFS - rock solid, no alignment issues)
         fileSystems."/" = {
           device = "/dev/vda1";
-          fsType = "btrfs";
-          options = [ "compress=zstd:1" "noatime" "space_cache=v2" ];
+          fsType = "xfs";
+          options = [ "noatime" ];
         };
 
         # Build acceleration (tmpfs for /tmp)
         boot.tmp.useTmpfs = true;
         boot.tmp.tmpfsSize = "50%";
 
-        # Auto-resize Btrfs on boot
-        systemd.services.btrfs-resize = {
-          description = "Resize Btrfs to fill partition";
+        # Auto-resize XFS on boot
+        systemd.services.xfs-growfs = {
+          description = "Grow XFS to fill partition";
           wantedBy = [ "multi-user.target" ];
-          after = [ "local-fs.target" "systemd-journald.service" ];
+          after = [ "local-fs.target" ];
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
-            ExecStart = "${pkgs.btrfs-progs}/bin/btrfs filesystem resize max /";
+            ExecStart = "${pkgs.xfsprogs}/bin/xfs_growfs /";
           };
         };
 
@@ -72,7 +85,7 @@
 
         # Minimal packages
         nix.settings.experimental-features = [ "nix-command" "flakes" ];
-        environment.systemPackages = with pkgs; [ nix git btrfs-progs rsync ];
+        environment.systemPackages = with pkgs; [ nix git xfsprogs rsync ];
 
         system.stateVersion = "24.11";
       };
@@ -80,6 +93,7 @@
       nixos = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [ configuration ];
+        specialArgs = { inherit nixos-apple-silicon; };
       };
 
       closureInfo = pkgs.closureInfo { rootPaths = [ nixos.config.system.build.toplevel ]; };

@@ -26,13 +26,13 @@ jobs:
           cp -L result/store-paths store-paths
           cp -L result/toplevel-path toplevel-path
 
-      - name: Create GPT disk with Btrfs
+      - name: Create GPT disk with XFS
         run: |
-          sudo apt-get install -y gdisk btrfs-progs
+          sudo apt-get install -y gdisk xfsprogs
 
           TOPLEVEL=$(cat toplevel-path)
 
-          # Create 5GB disk image (room for growth)
+          # Create 5GB disk image
           truncate -s 5G seed.raw
 
           # Create GPT with 4KB alignment
@@ -41,12 +41,12 @@ jobs:
           # Setup loop device with partition scanning
           LOOP=$(sudo losetup -fP --show seed.raw)
 
-          # Format partition directly (node size = 4k to match kernel page size)
-          sudo mkfs.btrfs -L nixos -n 4k "${LOOP}p1"
+          # Format with XFS (rock solid, no alignment issues)
+          sudo mkfs.xfs -f -L nixos "${LOOP}p1"
 
           # Mount and populate
           sudo mkdir -p /mnt/nixos
-          sudo mount -o compress=zstd:1 "${LOOP}p1" /mnt/nixos
+          sudo mount "${LOOP}p1" /mnt/nixos
 
           sudo mkdir -p /mnt/nixos/nix/store
           sudo mkdir -p /mnt/nixos/etc

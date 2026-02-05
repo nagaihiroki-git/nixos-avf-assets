@@ -79,7 +79,10 @@
             [ ! -f "$FLAKE_PATH/flake.nix" ] && { log "No flake.nix, skipping"; exit 0; }
 
             log "Building system..."
-            SYSTEM=$(nix build "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" --no-link --print-out-paths 2>&1 | tee /dev/console | tail -1)
+            SYSTEM=$(nix build "$FLAKE_PATH#nixosConfigurations.$HOSTNAME.config.system.build.toplevel" \
+              --no-link --print-out-paths \
+              --max-jobs 1 --option max-substitution-jobs 1 \
+              2>&1 | tee /dev/console | tail -1)
 
             [ -z "$SYSTEM" ] || [ ! -d "$SYSTEM" ] && { error "Build failed!"; exit 1; }
 

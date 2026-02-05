@@ -72,7 +72,7 @@
 
         # Minimal packages
         nix.settings.experimental-features = [ "nix-command" "flakes" ];
-        environment.systemPackages = with pkgs; [ git btrfs-progs ];
+        environment.systemPackages = with pkgs; [ nix git btrfs-progs rsync ];
 
         system.stateVersion = "24.11";
       };

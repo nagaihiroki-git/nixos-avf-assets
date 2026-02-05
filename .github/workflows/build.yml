@@ -25,33 +25,6 @@ jobs:
           cp -L result/initrd.img initrd.img
           cp -L result/seed.raw.zst seed.raw.zst
 
-      - name: Reformat EXT4 without metadata_csum
-        run: |
-          zstd -d seed.raw.zst -o seed.raw
-          rm seed.raw.zst
-
-          # Partition starts at sector 2048 (1MiB offset)
-          LOOP=$(sudo losetup --find --show --offset 1048576 seed.raw)
-
-          # Mount and copy contents
-          sudo mkdir -p /mnt/nixos
-          sudo mount "$LOOP" /mnt/nixos
-          sudo cp -a /mnt/nixos /tmp/nixos-backup
-          sudo umount /mnt/nixos
-
-          # Reformat without metadata_csum for VirtIO compatibility
-          sudo mkfs.ext4 -O ^metadata_csum -L nixos "$LOOP"
-
-          # Restore contents
-          sudo mount "$LOOP" /mnt/nixos
-          sudo cp -a /tmp/nixos-backup/. /mnt/nixos/
-          sudo umount /mnt/nixos
-
-          sudo losetup -d "$LOOP"
-
-          zstd -19 -T0 seed.raw -o seed.raw.zst
-          rm seed.raw
-
       - name: Release
         uses: softprops/action-gh-release@v2
         with:

@@ -18,37 +18,53 @@ jobs:
 
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
-      - name: Build
+      - name: Build NixOS components
         run: |
           nix build
           cp -L result/vmlinuz vmlinuz
           cp -L result/initrd.img initrd.img
-          cp -L result/seed.raw.zst seed.raw.zst
+          cp -L result/store-paths store-paths
+          cp -L result/toplevel-path toplevel-path
 
-      - name: Reformat EXT4 without metadata_csum
+      - name: Create Btrfs root image
         run: |
-          zstd -d seed.raw.zst -o seed.raw
-          rm seed.raw.zst
+          sudo apt-get install -y btrfs-progs gdisk
 
-          sudo apt-get install -y kpartx
-          sudo kpartx -av seed.raw
-          LOOP=/dev/mapper/loop0p1
+          TOPLEVEL=$(cat toplevel-path)
 
+          # Create 2GB Btrfs image
+          truncate -s 2G rootfs.img
+          mkfs.btrfs -L nixos rootfs.img
+
+          # Mount and populate
           sudo mkdir -p /mnt/nixos
-          sudo mount "$LOOP" /mnt/nixos
-          sudo cp -a /mnt/nixos /tmp/nixos-backup
+          sudo mount -o loop rootfs.img /mnt/nixos
+
+          sudo mkdir -p /mnt/nixos/nix/store
+          sudo mkdir -p /mnt/nixos/etc
+
+          # Copy Nix store closure
+          cat store-paths | while read path; do
+            sudo cp -a "$path" /mnt/nixos/nix/store/
+          done
+
+          # Create basic files
+          echo "nixos-avf" | sudo tee /mnt/nixos/etc/hostname
+          sudo ln -s "$TOPLEVEL/init" /mnt/nixos/init
+
           sudo umount /mnt/nixos
 
-          sudo mkfs.ext4 -O ^metadata_csum -L nixos "$LOOP"
+      - name: Create GPT disk image
+        run: |
+          PART_SIZE=$(stat -c%s rootfs.img)
+          DISK_SIZE=$((PART_SIZE + 8 * 1024 * 1024))
 
-          sudo mount "$LOOP" /mnt/nixos
-          sudo cp -a /tmp/nixos-backup/. /mnt/nixos/
-          sudo umount /mnt/nixos
+          truncate -s $DISK_SIZE seed.raw
+          sgdisk -n 1:2048:0 -t 1:8300 seed.raw
 
-          sudo kpartx -dv seed.raw
+          dd if=rootfs.img of=seed.raw bs=512 seek=2048 conv=notrunc
 
           zstd -19 -T0 seed.raw -o seed.raw.zst
-          rm seed.raw
 
       - name: Release
         uses: softprops/action-gh-release@v2

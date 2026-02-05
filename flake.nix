@@ -14,13 +14,16 @@
         ];
 
         boot.kernelParams = [ "console=hvc0" ];
-        boot.initrd.availableKernelModules = [ "virtio_pci" "virtio_blk" "virtio_gpu" "virtio_net" "virtiofs" ];
+        boot.initrd.availableKernelModules = [
+          "virtio_pci" "virtio_blk" "virtio_gpu" "virtio_net" "virtiofs"
+          "nvme" "btrfs"
+        ];
         boot.growPartition = true;
 
         fileSystems."/" = {
-          device = "/dev/vda1";
-          fsType = "ext4";
-          autoResize = true;
+          device = "/dev/nvme0n1p1";
+          fsType = "btrfs";
+          options = [ "compress=zstd" "noatime" ];
         };
 
         fileSystems."/etc/nixos" = {
@@ -104,55 +107,20 @@
         modules = [ configuration ];
       };
 
-      rootfsPartition = pkgs.callPackage "${nixpkgs}/nixos/lib/make-ext4-fs.nix" {
-        storePaths = [ nixos.config.system.build.toplevel ];
-        volumeLabel = "nixos";
-        populateImageCommands = ''
-          mkdir -p ./files/etc
-          echo "nixos-avf" > ./files/etc/hostname
-          ln -s ${nixos.config.system.build.toplevel}/init ./files/init
-        '';
-      };
+      closureInfo = pkgs.closureInfo { rootPaths = [ nixos.config.system.build.toplevel ]; };
     in
     {
       packages.${system} = {
         kernel = nixos.config.system.build.kernel;
         initrd = nixos.config.system.build.initialRamdisk;
+        toplevel = nixos.config.system.build.toplevel;
 
-        rootfs = pkgs.runCommand "nixos-avf-gpt-image" {
-          nativeBuildInputs = [ pkgs.gptfdisk pkgs.e2fsprogs pkgs.util-linux ];
-        } ''
-          PART_SIZE=$(stat -c%s "${rootfsPartition}")
-
-          DISK_IMAGE=main.raw
-          truncate -s $((PART_SIZE + 8 * 1024 * 1024)) $DISK_IMAGE
-
-          sgdisk -n 1:2048:0 -t 1:8300 $DISK_IMAGE
-
-          PART_END=$(sgdisk -p $DISK_IMAGE | awk '/^ *1 / {print $3}')
-          PART_SECTORS=$((PART_END - 2048 + 1))
-          PART_BYTES=$((PART_SECTORS * 512))
-
-          cp ${rootfsPartition} part.img
-          chmod +w part.img
-          e2fsck -fy part.img || true
-
-          BLOCK_SIZE=$(tune2fs -l part.img | grep "Block size" | awk '{print $3}')
-          PART_BLOCKS=$((PART_BYTES / BLOCK_SIZE))
-          echo "Partition: $PART_SECTORS sectors = $PART_BYTES bytes, Block size: $BLOCK_SIZE, Target blocks: $PART_BLOCKS"
-          resize2fs part.img ''${PART_BLOCKS}
-
-          dd if=part.img of="$DISK_IMAGE" bs=512 seek=2048 conv=notrunc
-
-          mkdir -p $out
-          cp $DISK_IMAGE $out/main.raw
-        '';
-
-        default = pkgs.runCommand "avf-assets" { nativeBuildInputs = [ pkgs.zstd ]; } ''
+        default = pkgs.runCommand "avf-assets" {} ''
           mkdir -p $out
           cp ${nixos.config.system.build.kernel}/${nixos.config.system.boot.loader.kernelFile} $out/vmlinuz
           cp ${nixos.config.system.build.initialRamdisk}/${nixos.config.system.boot.loader.initrdFile} $out/initrd.img
-          zstd -19 -T0 ${self.packages.${system}.rootfs}/main.raw -o $out/seed.raw.zst
+          cp ${closureInfo}/store-paths $out/store-paths
+          echo "${nixos.config.system.build.toplevel}" > $out/toplevel-path
         '';
       };
     };

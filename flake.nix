@@ -132,13 +132,14 @@
           PART_END=$(sgdisk -p $DISK_IMAGE | awk '/^ *1 / {print $3}')
           PART_SECTORS=$((PART_END - 2048 + 1))
           PART_BYTES=$((PART_SECTORS * 512))
-          PART_BLOCKS=$((PART_BYTES / 4096))
-
-          echo "Partition: $PART_SECTORS sectors = $PART_BYTES bytes = $PART_BLOCKS blocks"
 
           cp ${rootfsPartition} part.img
           chmod +w part.img
           e2fsck -fy part.img || true
+
+          BLOCK_SIZE=$(tune2fs -l part.img | grep "Block size" | awk '{print $3}')
+          PART_BLOCKS=$((PART_BYTES / BLOCK_SIZE))
+          echo "Partition: $PART_SECTORS sectors = $PART_BYTES bytes, Block size: $BLOCK_SIZE, Target blocks: $PART_BLOCKS"
           resize2fs part.img ''${PART_BLOCKS}
 
           dd if=part.img of="$DISK_IMAGE" bs=512 seek=2048 conv=notrunc

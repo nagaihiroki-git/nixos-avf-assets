@@ -30,7 +30,9 @@ jobs:
           zstd -d seed.raw.zst -o seed.raw
           rm seed.raw.zst
 
-          LOOP=$(sudo losetup --find --show --offset 1048576 seed.raw)
+          sudo apt-get install -y kpartx
+          sudo kpartx -av seed.raw
+          LOOP=/dev/mapper/loop0p1
 
           sudo mkdir -p /mnt/nixos
           sudo mount "$LOOP" /mnt/nixos
@@ -43,7 +45,7 @@ jobs:
           sudo cp -a /tmp/nixos-backup/. /mnt/nixos/
           sudo umount /mnt/nixos
 
-          sudo losetup -d "$LOOP"
+          sudo kpartx -dv seed.raw
 
           zstd -19 -T0 seed.raw -o seed.raw.zst
           rm seed.raw
